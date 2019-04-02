@@ -21,9 +21,9 @@
 ###########################################################################
 #  Change values here													  #
 #																		  #
-VERSION="2.1.0"                                                           #
-SDKVERSION="8.4"                                                          #
-MIN_VERSION="7.0"                                                         #
+VERSION="2.2.6"                                                           #
+SDKVERSION="12.2"                                                          #
+MIN_VERSION="8.0"                                                         #
 #																		  #
 ###########################################################################
 #																		  #
@@ -35,11 +35,13 @@ MIN_VERSION="7.0"                                                         #
 CURRENTPATH=`pwd`
 ARCHS="i386 x86_64 armv7 armv7s arm64"
 DEVELOPER=`xcode-select -print-path`
+FN_VERSION=$(echo $VERSION | sed -e s/\\./_/g)
 
 set -e
 if [ ! -e expat-${VERSION}.tar.gz ]; then
-	echo "Downloading expat-${VERSION}.tar.gz"
-    curl -O http://ncu.dl.sourceforge.net/project/expat/expat/${VERSION}/expat-${VERSION}.tar.gz
+    echo $FN_VERSION
+	echo "Downloading https://codeload.github.com/libexpat/libexpat/tar.gz/libexpat-R_${FN_VERSION}"
+    curl -L -o expat-${VERSION}.tar.gz https://github.com/libexpat/libexpat/archive/R_${FN_VERSION}.tar.gz
 else
 	echo "Using expat-${VERSION}.tar.gz"
 fi
@@ -51,7 +53,7 @@ mkdir -p "${CURRENTPATH}/lib"
 for ARCH in ${ARCHS}
 do
 	tar zxf expat-${VERSION}.tar.gz -C "${CURRENTPATH}/src"
-	cd "${CURRENTPATH}/src/expat-${VERSION}"
+	cd "${CURRENTPATH}/src/libexpat-R_${FN_VERSION}/expat"
 
 	if [[ "${ARCH}" == "i386" || "${ARCH}" == "x86_64" ]];
 	then
@@ -75,35 +77,34 @@ do
     export NM=${DEVELOPER}/Toolchains/XcodeDefault.xctoolchain/usr/bin/nm
     export RANLIB=${DEVELOPER}/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib
 
-    export LDFLAGS="-arch ${ARCH} -pipe -no-cpp-precomp -isysroot ${SDKROOT} -L${CURRENTPATH}/lib -miphoneos-version-min=${MIN_VERSION} -fheinous-gnu-extensions"
-    export CFLAGS="-arch ${ARCH} -pipe -no-cpp-precomp -isysroot ${SDKROOT} -I${CURRENTPATH}/include -miphoneos-version-min=${MIN_VERSION} -fheinous-gnu-extensions"
-    export CPPFLAGS="-arch ${ARCH} -pipe -no-cpp-precomp -isysroot ${SDKROOT} -I${CURRENTPATH}/include -miphoneos-version-min=${MIN_VERSION} -fheinous-gnu-extensions"
-    export CXXFLAGS="-arch ${ARCH} -pipe -no-cpp-precomp -isysroot ${SDKROOT} -I${CURRENTPATH}/include -miphoneos-version-min=${MIN_VERSION} -fheinous-gnu-extensions"
+    export LDFLAGS="-arch ${ARCH} -pipe -no-cpp-precomp -isysroot ${SDKROOT} -L${CURRENTPATH}/lib -miphoneos-version-min=${MIN_VERSION} -fheinous-gnu-extensions -fembed-bitcode"
+    export CFLAGS="-arch ${ARCH} -pipe -no-cpp-precomp -isysroot ${SDKROOT} -I${CURRENTPATH}/include -miphoneos-version-min=${MIN_VERSION} -fheinous-gnu-extensions -fembed-bitcode"
+    export CPPFLAGS="-arch ${ARCH} -pipe -no-cpp-precomp -isysroot ${SDKROOT} -I${CURRENTPATH}/include -miphoneos-version-min=${MIN_VERSION} -fheinous-gnu-extensions -fembed-bitcode"
+    export CXXFLAGS="-arch ${ARCH} -pipe -no-cpp-precomp -isysroot ${SDKROOT} -I${CURRENTPATH}/include -miphoneos-version-min=${MIN_VERSION} -fheinous-gnu-extensions -fembed-bitcode"
 
     HOST="${ARCH}"
     if [ "${ARCH}" == "arm64" ];
     then
         HOST="aarch64"
-        
-        echo "Patch..."
-        #Patch config.sub to support aarch64
-        patch -R -p0 < "../../config.sub.diff" >> "${LOG}" 2>&1
 
         #Patch readfilemap.c to support aarch64
-        perl -i -pe 's|#include <stdio.h>|#include <stdio.h>$/#include <unistd.h>|g' "${CURRENTPATH}/src/expat-${VERSION}/xmlwf/readfilemap.c"
+        echo perl -i -pe 's|#include <stdio.h>|#include <stdio.h>$/#include <unistd.h>|g' "${CURRENTPATH}/src/libexpat-R_${FN_VERSION}/expat/xmlwf/readfilemap.c"
+        perl -i -pe 's|#include <stdio.h>|#include <stdio.h>$/#include <unistd.h>|g' "${CURRENTPATH}/src/libexpat-R_${FN_VERSION}/expat/xmlwf/readfilemap.c"
     fi
 
 	mkdir -p "${CURRENTPATH}/bin/${PLATFORM}${SDKVERSION}-${ARCH}.sdk"
 	LOG="${CURRENTPATH}/bin/${PLATFORM}${SDKVERSION}-${ARCH}.sdk/build-expat-${VERSION}.log"
 
+    echo "buildconf..."
+    ./buildconf.sh
     echo "Configure..."
-	./configure --host="${HOST}-apple-darwin" --prefix="${CURRENTPATH}/bin/${PLATFORM}${SDKVERSION}-${ARCH}.sdk" --disable-shared --enable-static > "${LOG}" 2>&1
+	./configure --host="${HOST}-apple-darwin" --prefix="${CURRENTPATH}/bin/${PLATFORM}${SDKVERSION}-${ARCH}.sdk" --disable-shared --enable-static --with-docbook > "${LOG}" 2>&1
     echo "Make..."
     make -j4 >> "${LOG}" 2>&1
     echo "Make install..."
     make install >> "${LOG}" 2>&1
 	cd "${CURRENTPATH}"
-	rm -rf "${CURRENTPATH}/src/expat-${VERSION}"
+	rm -rf "${CURRENTPATH}/src/libexpat-R_${FN_VERSION}"
 done
 
 echo "Build library..."
